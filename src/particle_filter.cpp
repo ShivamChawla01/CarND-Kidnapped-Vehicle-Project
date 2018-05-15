@@ -24,6 +24,41 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
+	default_random_engine gen;
+	num_particles=40;
+
+	// TODO: Set standard deviations for x, y, and theta.
+	  double std_x=std[0];
+	  double std_y=std[1];
+	  double std_theta=std[2];
+	
+	
+	// This line creates a normal (Gaussian) distribution for x.
+	normal_distribution<double> dist_x(x, std_x);
+	
+	// TODO: Create normal distributions for y and theta.
+	normal_distribution<double> dist_y(y, std_y);
+	
+	normal_distribution<double> dist_theta(theta, std_theta);
+	
+	
+
+	for (int i = 0; i < num_particles; ++i) {
+		double sample_x, sample_y, sample_theta;
+		
+		Particle P=Particle();
+		P.x = dist_x(gen);
+		P.y = dist_y(gen);
+		P.theta = dist_theta(gen);
+		P.weight=1;
+		// std::cout<<"x:"<<P.x<<endl;
+		// std::cout<<"y:"<<P.y<<endl;
+		// std::cout<<"theta:"<<P.theta<<endl;
+		weights.push_back(1);
+		particles.push_back(P);
+
+}
+is_initialized=true;
 
 }
 
@@ -32,6 +67,39 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	// NOTE: When adding noise you may find std::normal_distribution and std::default_random_engine useful.
 	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
+	default_random_engine gen;
+	
+	double pred_x,pred_y,pred_theta;
+	for(int i=0;i<num_particles;i++)
+	{
+		
+		if(yaw_rate!=0){
+			pred_x=particles[i].x+(velocity/yaw_rate)*(sin(particles[i].theta+yaw_rate*delta_t)-sin(particles[i].theta));
+			pred_y=particles[i].y+(velocity/yaw_rate)*(cos(particles[i].theta)-cos(particles[i].theta+yaw_rate*delta_t));
+			pred_theta=particles[i].theta+yaw_rate*delta_t;
+		}
+		else{
+			pred_x=particles[i].x+velocity*delta_t*cos(particles[i].theta);
+			pred_y=particles[i].y+velocity*delta_t*sin(particles[i].theta);
+			pred_theta=particles[i].theta;
+
+		}
+		
+	
+	// TODO: Create normal distributions for y and theta.
+		normal_distribution<double> dist_x(pred_x, std_pos[0]);
+		normal_distribution<double> dist_y(pred_y, std_pos[1]);
+	
+		normal_distribution<double> dist_theta(pred_theta, std_pos[2]);
+		particles[i].x = dist_x(gen);
+		particles[i].y = dist_y(gen);
+		particles[i].theta = dist_theta(gen);
+		particles[i].weight=1;
+		weights[i]=1;
+		
+
+
+	}
 
 }
 
@@ -55,12 +123,94 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
-}
+	std::vector<LandmarkObs> Map_Observations;
+
+	
+	// std::cout<<map_landmarks.landmark_list.size()<<endl;
+	for (int t=0;t<num_particles;t++)
+	{
+		
+		double probabil=1;
+		for(int k=0;k<observations.size();k++)
+		{
+			double x_map,y_map;
+			LandmarkObs l=LandmarkObs();
+			l.x=particles[t].x+cos(particles[t].theta)*observations[k].x-sin(particles[t].theta)*observations[k].y;
+			l.y=particles[t].y+sin(particles[t].theta)*observations[k].x+cos(particles[t].theta)*observations[k].y;
+		
+			Map_Observations.push_back(l);
+		}
+		
+		int index;
+		for (int i=0;i<Map_Observations.size();i++)
+		{
+			double x1,y1,x2,y2;
+			double dist=100;
+		
+		
+		
+			x1=Map_Observations[i].x;
+			y1=Map_Observations[i].y;
+			probabil=1;
+			for(int j=0;j<map_landmarks.landmark_list.size();j++)
+			{
+			
+
+				x2=double(map_landmarks.landmark_list[j].x_f);
+				y2=double(map_landmarks.landmark_list[j].y_f);
+				double dist1=sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+				if(dist1>sensor_range)
+				{
+					
+				}
+				if(dist1<dist)
+				{
+					dist=dist1;
+					index=j;
+					
+
+				}
+			}
+			x2=double(map_landmarks.landmark_list[index].x_f);
+			y2=double(map_landmarks.landmark_list[index].y_f);
+			// std::cout<<x1<<endl;
+			// std::cout<<y1<<endl;
+			// std::cout<<map_landmarks.landmark_list[index].x_f<<endl;
+			// std::cout<<map_landmarks.landmark_list[index].y_f<<endl;
+			double gauss_norm= (1/(2 * M_PI * std_landmark[0]*std_landmark[1]));
+			probabil=probabil*gauss_norm*exp(-(((x1-x2)*(x1-x2))/(2*std_landmark[0]*std_landmark[0]))-(((y1-y2)*(y1-y2))/(2*std_landmark[1]*std_landmark[1])));
+
+
+		}
+		
+
+		weights[t]=probabil;
+		particles[t].weight=probabil;
+		
+
+	
+
+
+
+		}
+		}
 
 void ParticleFilter::resample() {
 	// TODO: Resample particles with replacement with probability proportional to their weight. 
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+
+	default_random_engine gen;
+	discrete_distribution<int> distribution(weights.begin(),weights.end());	
+
+	vector<Particle> resample_particles;
+
+	for(int i=0;i<num_particles;i++)
+	{
+		resample_particles.push_back(particles[distribution(gen)]);
+	}
+	
+	particles=resample_particles;
 
 }
 
@@ -75,6 +225,8 @@ Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<i
     particle.associations= associations;
     particle.sense_x = sense_x;
     particle.sense_y = sense_y;
+
+	return particle;
 }
 
 string ParticleFilter::getAssociations(Particle best)
